@@ -45,17 +45,17 @@ $ ./buddy.sh
 
 === Claude Companion Manager ===
 
-  1) 현재 설정 보기
-  2) 이름/성격/동물 변경
-  3) 바이너리 패치 적용
-  4) 패치 상태 확인
-  5) 패치 복원 (원본)
-  6) 숨기기
-  7) 다시 보이기
-  8) 초기화
-  q) 종료
+  1) Show current settings (현재 설정 보기)
+  2) Change name/personality/species (이름/성격/동물 변경)
+  3) Apply binary patch (바이너리 패치 적용)
+  4) Check patch status (패치 상태 확인)
+  5) Restore patch — original (패치 복원, 원본)
+  6) Hide companion (숨기기)
+  7) Show companion (다시 보이기)
+  8) Reset to defaults (초기화)
+  q) Quit (종료)
 
-선택:
+Select (선택):
 ```
 
 ### Show Current Settings
@@ -63,18 +63,18 @@ $ ./buddy.sh
 ```
 $ ./buddy.sh show
 
-=== Companion 현재 설정 ===
-  이름:     버드 부하
-  성격:     a]loyal but sassy dragon sidekick
-  동물:     dragon
-  눈:       (해시 결정)
-  모자:     (해시 결정)
-  레어리티: (해시 결정)
-  반짝이:   (해시 결정)
-  숨김:     아니오
-  생성일:   2025-06-26T...
+=== Companion Current Settings (현재 설정) ===
+  Name (이름):        버드 부하
+  Personality (성격): a]loyal but sassy dragon sidekick
+  Species (동물):     dragon
+  Eye (눈):           (hash-determined)
+  Hat (모자):         (hash-determined)
+  Rarity (레어리티):  (hash-determined)
+  Shiny (반짝이):     (hash-determined)
+  Muted (숨김):       No
+  Hatched at (생성일): 2025-06-26T...
 
-  패치: ✅ 적용됨 — 모든 항목 변경 가능
+  Patch (패치): ✅ Applied — all fields modifiable (적용됨 — 모든 항목 변경 가능)
 ```
 
 ### Change Name, Personality & Species
@@ -82,17 +82,18 @@ $ ./buddy.sh show
 ```
 $ ./buddy.sh set
 
-=== Companion 설정 변경 ===
-(변경하지 않을 항목은 Enter로 건너뛰기)
+=== Companion Settings Change (설정 변경) ===
+(Press Enter to skip any field) (변경하지 않을 항목은 Enter로 건너뛰기)
 
-새 이름 (Enter=건너뛰기): 드래곤
-✅ 이름 → 드래곤
+New name (새 이름) (Enter=skip): Dragon
+✅ Name (이름) → Dragon
 
+(e.g. tsundere, gentle advisor, sarcastic observer, enthusiastic cheerleader)
 (예: 츤데레, 다정한 조언자, 냉소적 관찰자, 열혈 응원단)
-새 성격 설명 (Enter=건너뛰기): 츤데레 드래곤
-✅ 성격 → 츤데레 드래곤
+New personality description (새 성격 설명) (Enter=skip): tsundere dragon
+✅ Personality (성격) → tsundere dragon
 
-동물 선택 (18종):
+Select species (동물 선택) (18 types):
 
    1) axolotl       7) dragon      13) owl
    2) blob          8) duck        14) penguin
@@ -101,10 +102,10 @@ $ ./buddy.sh set
    5) cat          11) mushroom    17) snail
    6) chonk        12) octopus     18) turtle
 
-번호 또는 이름 (Enter=건너뛰기): 7
-✅ 동물 → dragon
+Number or name (번호 또는 이름) (Enter=skip): 7
+✅ Species (동물) → dragon
 
-🔄 Claude Code 재시작하면 반영됩니다.
+🔄 Changes take effect after restarting Claude Code (재시작하면 반영됩니다).
 ```
 
 ### Patch Binary
@@ -112,9 +113,9 @@ $ ./buddy.sh set
 ```
 $ ./buddy.sh patch
 
-백업 생성: /Users/.../.local/bin/claude.bak
-✅ 1곳 패치 완료
-✅ ad-hoc 재서명 완료
+Backup created (백업 생성): /Users/.../.local/bin/claude.bak
+✅ 1 location(s) patched (곳 패치 완료)
+✅ Ad-hoc re-signing complete (재서명 완료)
 ```
 
 ### Check Patch Status
@@ -122,11 +123,11 @@ $ ./buddy.sh patch
 ```
 $ ./buddy.sh patch check
 
-=== 패치 상태 ===
-바이너리: /Users/.../.local/bin/claude
-백업:     /Users/.../.local/bin/claude.bak
-원본 패턴: 0개 / 패치 패턴: 1개
-상태: ✅ 패치됨
+=== Patch Status (패치 상태) ===
+Binary (바이너리): /Users/.../.local/bin/claude
+Backup (백업):     /Users/.../.local/bin/claude.bak
+Original pattern (원본 패턴): 0 / Patched pattern (패치 패턴): 1
+Status (상태): ✅ Patched (패치됨)
 ```
 
 ## Available Species (18)
