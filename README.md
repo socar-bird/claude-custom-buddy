@@ -28,6 +28,8 @@ chmod +x buddy.sh
 ./buddy.sh              # Interactive menu
 ./buddy.sh show         # Show current settings
 ./buddy.sh set          # Change name/personality/species/eye/hat
+./buddy.sh art          # Edit custom ASCII art (opens $EDITOR)
+./buddy.sh art clear    # Remove custom art, revert to built-in
 ./buddy.sh patch        # Apply binary patch
 ./buddy.sh patch check  # Check patch status
 ./buddy.sh patch restore # Restore original binary
@@ -47,12 +49,14 @@ $ ./buddy.sh
 
   1) Show current settings (현재 설정 보기)
   2) Change name/personality/species (이름/성격/동물 변경)
-  3) Apply binary patch (바이너리 패치 적용)
-  4) Check patch status (패치 상태 확인)
-  5) Restore patch — original (패치 복원, 원본)
-  6) Hide companion (숨기기)
-  7) Show companion (다시 보이기)
-  8) Reset to defaults (초기화)
+  3) Edit custom ASCII art (커스텀 아트 편집)
+  4) Apply binary patch (바이너리 패치 적용)
+  5) Check patch status (패치 상태 확인)
+  6) Restore patch — original (패치 복원, 원본)
+  7) Hide companion (숨기기)
+  8) Show companion (다시 보이기)
+  9) Clear custom art (커스텀 아트 제거)
+  0) Reset to defaults (초기화)
   q) Quit (종료)
 
 Select (선택):
@@ -140,6 +144,60 @@ Status (상태): ✅ Patched (패치됨)
 | owl | penguin | rabbit | robot |
 | snail | turtle | | |
 
+## Custom ASCII Art
+
+After patching, you can draw your own companion instead of using the built-in 18 species.
+
+Run `./buddy.sh art` to open your `$EDITOR` with a JSON template:
+
+```json
+{
+  "frames": [
+    ["            ", " |\\    /|  ", " | \\__/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")  "],
+    ["            ", " |\\    /|  ", " | \\__/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")~ "],
+    ["            ", " |\\    /|  ", " | \\--/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")  "]
+  ]
+}
+```
+
+This renders as a **Pikachu** (피카츄):
+
+```
+  Frame 1:         Frame 2:         Frame 3:
+  |\    /|         |\    /|         |\    /|
+  | \__/ |         | \__/ |         | \--/ |
+  ( · ω · )        ( · ω · )        ( · ω · )
+   (")_(")          (")_(")~         (")_(")
+```
+
+### Art format rules
+
+- `frames`: array of 1–5 frames (animation)
+- Each frame: exactly **5 strings**, each **12 chars** wide (pad with spaces)
+- `{E}` is replaced with the eye character at render time
+- Line 1: leave empty (`"            "`) to allow hat rendering
+
+### Pikachu `~/.claude.json` example
+
+```json
+{
+  "companion": {
+    "name": "피카츄",
+    "personality": "전기 뿜는 귀여운 포켓몬",
+    "species": "ghost",
+    "eye": "·",
+    "hat": "none",
+    "F": [
+      ["            ", " |\\    /|  ", " | \\__/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")  "],
+      ["            ", " |\\    /|  ", " | \\__/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")~ "],
+      ["            ", " |\\    /|  ", " | \\--/ |  ", " ( {E} ω {E} )  ", "  (\")\\_(\")  "]
+    ]
+  }
+}
+```
+
+> `species` is still required (any valid name) for internal compatibility, but the rendered art comes entirely from `F`.
+
 ## How It Works
 
 Claude Code determines companion traits using a hash:
@@ -150,7 +208,12 @@ hash = RE4(DE4(ME4(seed)))
 species = speciesList[floor(hash() * 18)]
 ```
 
-The binary merges config and hash with `{...config, ...bones}` — bones (hash values) always win. The patch flips this to `{...bones, ...config}`, so your `~/.claude.json` settings take priority.
+The binary merges config and hash with `{...config, ...bones}` — bones (hash values) always win. Two patches are applied:
+
+1. **Config override**: Flips `{...config, ...bones}` to `{...bones, ...config}`, so `~/.claude.json` settings take priority
+2. **Custom art renderer**: Changes `sy7[H.species]` to `H.F||sy7[H.species]` in the `Wr_` function, so custom frames from config are used before the built-in species art table
+
+Both patches are exactly the same byte length as the original code (no binary size change).
 
 ## Notes
 
