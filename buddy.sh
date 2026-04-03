@@ -6,6 +6,8 @@
 #   ./buddy.sh              # Interactive menu (인터랙티브 메뉴)
 #   ./buddy.sh show         # Show current settings (현재 설정 보기)
 #   ./buddy.sh set          # Change name/personality/species (이름/성격/동물 변경)
+#   ./buddy.sh art          # Edit custom ASCII art (커스텀 아트 편집)
+#   ./buddy.sh art clear    # Remove custom art (커스텀 아트 제거)
 #   ./buddy.sh patch        # Apply binary patch (바이너리 패치)
 #   ./buddy.sh patch check  # Check patch status (패치 상태 확인)
 #   ./buddy.sh patch restore # Restore original (원본 복원)
@@ -25,19 +27,23 @@ HAT_LIST="none crown tophat propeller halo wizard beanie tinyduck"
 
 is_patched() {
   [[ -z "$BINARY" ]] && return 1
-  # Check if the companion merge function is patched (bones + companion context)
+  # Check both patches: config override + custom art renderer
   python3 -c "
 data = open('$BINARY', 'rb').read()
-pat = b'{..._,...H}'
+# Check 1: companion merge patched
+pat1 = b'{..._,...H}'
+found1 = False
 idx = 0
 while True:
-    pos = data.find(pat, idx)
+    pos = data.find(pat1, idx)
     if pos == -1: break
     ctx = data[max(0,pos-200):pos]
     if b'bones' in ctx and b'companion' in ctx:
-        exit(0)
+        found1 = True; break
     idx = pos + 1
-exit(1)
+# Check 2: renderer patched (H.F|| present)
+found2 = b'H.F||sy7[H.species]' in data
+exit(0 if found1 and found2 else 1)
 " 2>/dev/null
 }
 
@@ -82,13 +88,23 @@ print(f\"  Rarity (레어리티):  {comp.get('rarity', '(hash-determined)')}\")
 print(f\"  Shiny (반짝이):     {comp.get('shiny', '(hash-determined)')}\")
 print(f\"  Muted (숨김):       {'Yes' if muted else 'No'}\")
 print(f\"  Hatched at (생성일): {comp.get('hatchedAt', '(none)')}\")
+F = comp.get('F')
+if F:
+    print(f\"  Custom Art (커스텀): ✅ {len(F)} frame(s)\")
+    eye = comp.get('eye', '\xB7')
+    for i, frame in enumerate(F):
+        print(f\"    Frame {i+1}:\")
+        for line in frame:
+            print(f\"      |{line.replace('{E}', eye)}|\")
+else:
+    print(f\"  Custom Art (커스텀): (none — using built-in species art)\")
 "
   echo ""
   if is_patched; then
-    echo "  Patch (패치): ✅ Applied — all fields modifiable (적용됨 — 모든 항목 변경 가능)"
+    echo "  Patch (패치): ✅ Applied — all fields + custom art modifiable (적용됨 — 모든 항목 + 커스텀 아트 변경 가능)"
   else
     echo "  Patch (패치): ⚠ Not applied — only name/personality changeable (미적용 — 이름/성격만 변경 가능)"
-    echo "         Run 'patch' first to change species/eye/hat (동물/눈/모자 변경하려면 'patch' 먼저 실행)"
+    echo "         Run 'patch' first to change species/eye/hat/art (동물/눈/모자/아트 변경하려면 'patch' 먼저 실행)"
   fi
 }
 
@@ -191,6 +207,148 @@ pick_hat() {
   echo "✅ Hat (모자) → $selected"
 }
 
+edit_art() {
+  local tmpfile
+  tmpfile=$(mktemp /tmp/companion-art.XXXXXX.json)
+
+  # Generate template — load existing or create sample
+  python3 -c "
+import json, sys
+
+config = json.load(open('$CONFIG')) if __import__('os').path.exists('$CONFIG') else {}
+existing = config.get('companion', {}).get('F')
+
+if existing:
+    data = existing
+else:
+    data = [
+        ['            ', '   /\\\_/\\\\    ', '  ( {E}   {E})  ', '  (  \u03c9  )   ', '  (\")_(\")   '],
+        ['            ', '   /\\\_/\\\\    ', '  ( {E}   {E})  ', '  (  \u03c9  )~  ', '  (\")_(\")   '],
+        ['            ', '   /\\\\-/\\\\    ', '  ( {E}   {E})  ', '  (  \u03c9  )   ', '  (\")_(\")   ']
+    ]
+
+out = {
+    '_comment': [
+        'Companion Custom Art (\ucee4\uc2a4\ud140 \uc544\ud2b8)',
+        'Rules (\uaddc\uce59):',
+        '  - frames: array of frames, each frame is array of 5 strings (\ud504\ub808\uc784 \ubc30\uc5f4, \uac01 \ud504\ub808\uc784\uc740 5\uac1c \ubb38\uc790\uc5f4)',
+        '  - Each line should be 12 chars wide, pad with spaces (\uac01 \uc904 12\uc790, \ube48 \uacf3\uc740 \uc2a4\ud398\uc774\uc2a4)',
+        '  - {E} = eye character, auto-replaced ({E} = \ub208 \ubb38\uc790, \uc790\ub3d9 \uce58\ud658)',
+        '  - 1~5 frames for animation (\uc560\ub2c8\uba54\uc774\uc158\uc6a9 1~5\ud504\ub808\uc784)',
+        '  - Line 1 = hat area (empty for hats to work) (\ubaa8\uc790 \uc790\ub9ac)',
+        '',
+        'Delete this _comment block before saving \u2014 or leave it, it will be stripped.',
+        '(\uc774 _comment \ube14\ub85d\uc740 \uc800\uc7a5 \uc2dc \uc790\ub3d9 \uc81c\uac70\ub429\ub2c8\ub2e4)',
+    ],
+    'frames': data
+}
+
+with open('$tmpfile', 'w') as f:
+    json.dump(out, f, ensure_ascii=False, indent=2)
+"
+
+  # Show format guide and preview before editing
+  echo ""
+  echo "=== Custom Art Editor (커스텀 아트 편집기) ==="
+  echo ""
+  echo "JSON format (JSON 형식):"
+  echo '  {'
+  echo '    "frames": ['
+  echo '      ["            ", "   /\\_/\\    ", "  ( {E}   {E})  ", "  (  ω  )   ", "  (\")_(\")   "],'
+  echo '      ["            ", "   /\\_/\\    ", "  ( {E}   {E})  ", "  (  ω  )~  ", "  (\")_(\")   "]'
+  echo '    ]'
+  echo '  }'
+  echo ""
+  echo "Rendered output (렌더링 결과):"
+  echo "  Frame 1:         Frame 2:"
+  echo "    |   /\\_/\\    |   |   /\\_/\\    |"
+  echo "    |  ( ·   ·)  |   |  ( ·   ·)  |"
+  echo "    |  (  ω  )   |   |  (  ω  )~  |"
+  echo "    |  (\")_(\")   |   |  (\")_(\")   |"
+  echo ""
+  echo "Rules (규칙):"
+  echo "  • Each frame = 5 strings, 12 chars wide (각 프레임 = 5줄, 12자 폭)"
+  echo "  • {E} → eye char (눈 문자로 자동 치환)"
+  echo "  • Line 1 = empty for hat space (1번째 줄 비우면 모자 표시)"
+  echo ""
+
+  local editor="${EDITOR:-vi}"
+  echo "Opening $editor... (에디터 열기...)"
+  "$editor" "$tmpfile"
+
+  # Validate and save (검증 후 저장)
+  python3 -c "
+import json, sys
+
+try:
+    with open('$tmpfile') as f:
+        raw = json.load(f)
+except json.JSONDecodeError as e:
+    print(f'\u274c Invalid JSON: {e}')
+    sys.exit(1)
+
+# Accept either {frames: [...]} or bare [...]
+if isinstance(raw, list):
+    frames = raw
+elif isinstance(raw, dict) and 'frames' in raw:
+    frames = raw['frames']
+else:
+    print('\u274c JSON must be {\"frames\": [...]} or a bare array')
+    sys.exit(1)
+
+if not 1 <= len(frames) <= 5:
+    print(f'\u274c Need 1-5 frames, got {len(frames)}')
+    sys.exit(1)
+
+for i, frame in enumerate(frames):
+    if not isinstance(frame, list) or len(frame) != 5:
+        print(f'\u274c Frame {i+1}: must have exactly 5 lines, got {len(frame) if isinstance(frame, list) else type(frame).__name__}')
+        sys.exit(1)
+
+# Preview
+eye = json.load(open('$CONFIG')).get('companion', {}).get('eye', '\xb7') if __import__('os').path.exists('$CONFIG') else '\xb7'
+print()
+print('Preview (\ubbf8\ub9ac\ubcf4\uae30):')
+for i, frame in enumerate(frames):
+    print(f'  Frame {i+1}:')
+    for line in frame:
+        rendered = line.replace('{E}', eye)
+        print(f'    |{rendered}|')
+print()
+
+# Save to config
+with open('$CONFIG') as f:
+    d = json.load(f)
+if 'companion' not in d:
+    d['companion'] = {}
+d['companion']['F'] = frames
+with open('$CONFIG', 'w') as f:
+    json.dump(d, f, ensure_ascii=False, indent=2)
+print('\u2705 Custom art saved (\ucee4\uc2a4\ud140 \uc544\ud2b8 \uc800\uc7a5 \uc644\ub8cc)')
+print('\U0001f504 Restart Claude Code to apply (\uc7ac\uc2dc\uc791\ud558\uba74 \ubc18\uc601)')
+"
+
+  rm -f "$tmpfile"
+}
+
+clear_art() {
+  ensure_config
+  python3 -c "
+import json
+with open('$CONFIG') as f:
+    d = json.load(f)
+comp = d.get('companion', {})
+if 'F' in comp:
+    del comp['F']
+    d['companion'] = comp
+    with open('$CONFIG', 'w') as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    print('\u2705 Custom art removed, using built-in species art (\ucee4\uc2a4\ud140 \uc544\ud2b8 \uc81c\uac70, \uae30\ubcf8 \uc885 \uc544\ud2b8 \uc0ac\uc6a9)')
+else:
+    print('No custom art to remove (\uc81c\uac70\ud560 \ucee4\uc2a4\ud140 \uc544\ud2b8 \uc5c6\uc74c)')
+"
+}
+
 set_companion() {
   echo "=== Companion Settings Change (설정 변경) ==="
   echo "(Press Enter to skip any field) (변경하지 않을 항목은 Enter로 건너뛰기)"
@@ -203,9 +361,14 @@ set_companion() {
     pick_species
     pick_eye
     pick_hat
+    echo ""
+    read -p "Edit custom art? (커스텀 아트 편집?) [y/N]: " do_art
+    if [[ "$do_art" == "y" || "$do_art" == "Y" ]]; then
+      edit_art
+    fi
   else
     echo ""
-    echo "⚠ Binary not patched — cannot change species/eye/hat (바이너리 미패치 — 동물/눈/모자 변경 불가)"
+    echo "⚠ Binary not patched — cannot change species/eye/hat/art (바이너리 미패치 — 동물/눈/모자/아트 변경 불가)"
     echo "  Run './buddy.sh patch' first, then try again ('./buddy.sh patch' 실행 후 다시 시도하세요)"
   fi
 
@@ -241,13 +404,15 @@ for pat, label in [(orig_pat, 'orig'), (patched_pat, 'patched')]:
             if label == 'orig': orig += 1
             else: patched += 1
         idx = pos + 1
-print(f'Companion function: original={orig}, patched={patched}')
+print(f'Config override: original={orig}, patched={patched}')
 if patched > 0 and orig == 0:
-    print('Status (\uc0c1\ud0dc): \u2705 Patched (\ud328\uce58\ub428)')
-elif orig > 0 and patched == 0:
-    print('Status (\uc0c1\ud0dc): \u26a0 Not patched \u2014 original (\ubbf8\ud328\uce58, \uc6d0\ubcf8)')
+    print('  \u2705 Config override patched (\uc124\uc815 \uc624\ubc84\ub77c\uc774\ub4dc \ud328\uce58\ub428)')
 else:
-    print('Status (\uc0c1\ud0dc): \u2753 Partial or unknown (\ubd80\ubd84 \ud328\uce58 \ub610\ub294 \uc54c \uc218 \uc5c6\uc74c)')
+    print('  \u26a0 Config override not patched (\uc124\uc815 \uc624\ubc84\ub77c\uc774\ub4dc \ubbf8\ud328\uce58)')
+# Check renderer patch
+has_renderer = b'H.F||sy7[H.species]' in data
+r_status = '\u2705 Patched (\ud328\uce58\ub428)' if has_renderer else '\u26a0 Not patched (\ubbf8\ud328\uce58)'
+print(f'Custom art renderer: {r_status}')
 "
 }
 
@@ -268,27 +433,38 @@ patch_apply() {
     echo "Backup created (백업 생성): $BACKUP"
   fi
 
-  # Patch (패치) — target the companion merge function precisely
+  # Patch (패치) — config override + custom art renderer
   python3 -c "
 data = bytearray(open('$BINARY', 'rb').read())
-# Match the exact companion function: return{...H,..._}} preceded by bones
-# This is the function: function wC(){let H=T_().companion;...let{bones:_}=...;return{...H,..._}}
-old = b'{...H,..._}'
-new = b'{..._,...H}'
-count = 0
+patches = 0
+
+# Patch 1: companion merge — user config overrides hash-determined bones
+old1 = b'{...H,..._}'
+new1 = b'{..._,...H}'
 idx = 0
 while True:
-    pos = data.find(old, idx)
+    pos = data.find(old1, idx)
     if pos == -1: break
-    # Look in a 200-byte window before the pattern for companion-specific markers
-    ctx_before = data[max(0,pos-200):pos]
-    if b'bones' in ctx_before and b'companion' in ctx_before:
-        data[pos:pos+len(old)] = new
-        count += 1
+    ctx = data[max(0,pos-200):pos]
+    if b'bones' in ctx and b'companion' in ctx:
+        data[pos:pos+len(old1)] = new1
+        patches += 1
     idx = pos + 1
+
+# Patch 2: renderer — read custom frames from config (H.F) before built-in art (sy7)
+old2 = b'function Wr_(H,_=0){let q=sy7[H.species],O=[...q[_%q.length].map((\$)=>\$.replaceAll(\"{E}\",H.eye))];if(H.hat!==\"none\"&&!O[0].trim())O[0]=xw5[H.hat];if(!O[0].trim()&&q.every((\$)=>!\$[0].trim()))O.shift();return O}'
+new2 = b'function Wr_(H,_=0){let q=H.F||sy7[H.species],O=[...q[_%q.length].map(\$=>\$.replaceAll(\"{E}\",H.eye))];if(H.hat!=\"none\"&&!O[0].trim())O[0]=xw5[H.hat];if(!O[0].trim()&&q.every(\$=>!\$[0].trim()))O.shift();return O}'
+idx = 0
+while True:
+    pos = data.find(old2, idx)
+    if pos == -1: break
+    data[pos:pos+len(old2)] = new2
+    patches += 1
+    idx = pos + 1
+
 with open('$BINARY', 'wb') as f:
     f.write(data)
-print(f'\u2705 {count} location(s) patched (\uacf3 \ud328\uce58 \uc644\ub8cc)')
+print(f'\u2705 {patches} patch(es) applied (\ud328\uce58 \uc644\ub8cc)')
 "
 
   codesign --force --sign - "$BINARY" 2>/dev/null
@@ -355,24 +531,28 @@ menu() {
   echo ""
   echo "  1) Show current settings (현재 설정 보기)"
   echo "  2) Change name/personality/species (이름/성격/동물 변경)"
-  echo "  3) Apply binary patch (바이너리 패치 적용)"
-  echo "  4) Check patch status (패치 상태 확인)"
-  echo "  5) Restore patch — original (패치 복원, 원본)"
-  echo "  6) Hide companion (숨기기)"
-  echo "  7) Show companion (다시 보이기)"
-  echo "  8) Reset to defaults (초기화)"
+  echo "  3) Edit custom ASCII art (커스텀 아트 편집)"
+  echo "  4) Apply binary patch (바이너리 패치 적용)"
+  echo "  5) Check patch status (패치 상태 확인)"
+  echo "  6) Restore patch — original (패치 복원, 원본)"
+  echo "  7) Hide companion (숨기기)"
+  echo "  8) Show companion (다시 보이기)"
+  echo "  9) Clear custom art (커스텀 아트 제거)"
+  echo "  0) Reset to defaults (초기화)"
   echo "  q) Quit (종료)"
   echo ""
   read -p "Select (선택): " choice
   case "$choice" in
     1) show ;;
     2) set_companion ;;
-    3) patch_apply ;;
-    4) patch_check ;;
-    5) patch_restore ;;
-    6) mute ;;
-    7) unmute ;;
-    8) reset ;;
+    3) edit_art ;;
+    4) patch_apply ;;
+    5) patch_check ;;
+    6) patch_restore ;;
+    7) mute ;;
+    8) unmute ;;
+    9) clear_art ;;
+    0) reset ;;
     q|Q) exit 0 ;;
     *) echo "❌ Invalid selection (잘못된 선택)" ;;
   esac
@@ -384,6 +564,13 @@ case "${1:-menu}" in
   menu)          menu ;;
   show)          show ;;
   set)           set_companion ;;
+  art)
+    case "${2:-edit}" in
+      edit)  edit_art ;;
+      clear) clear_art ;;
+      *) echo "Usage (사용법): $0 art {edit|clear}" ;;
+    esac
+    ;;
   patch)
     case "${2:-apply}" in
       apply)   patch_apply ;;
@@ -396,7 +583,7 @@ case "${1:-menu}" in
   unmute)  unmute ;;
   reset)   reset ;;
   *)
-    echo "Usage (사용법): $0 {show|set|patch|mute|unmute|reset}"
+    echo "Usage (사용법): $0 {show|set|art|patch|mute|unmute|reset}"
     echo "        $0           # Interactive menu (인터랙티브 메뉴)"
     exit 1
     ;;
