@@ -25,9 +25,20 @@ HAT_LIST="none crown tophat propeller halo wizard beanie tinyduck"
 
 is_patched() {
   [[ -z "$BINARY" ]] && return 1
-  local patched
-  patched=$(grep -c '{\.\.\._,\.\.\.H}' <(strings "$BINARY") 2>/dev/null || echo 0)
-  [[ "$patched" -gt 0 ]]
+  # Check if the companion merge function is patched (bones + companion context)
+  python3 -c "
+data = open('$BINARY', 'rb').read()
+pat = b'{..._,...H}'
+idx = 0
+while True:
+    pos = data.find(pat, idx)
+    if pos == -1: break
+    ctx = data[max(0,pos-200):pos]
+    if b'bones' in ctx and b'companion' in ctx:
+        exit(0)
+    idx = pos + 1
+exit(1)
+" 2>/dev/null
 }
 
 ensure_config() {
@@ -209,22 +220,35 @@ patch_check() {
     echo "❌ Claude Code binary not found (바이너리를 찾을 수 없음)"
     return 1
   fi
-  local orig patched
-  orig=$(grep -c '{\.\.\.H,\.\.\._}' <(strings "$BINARY") 2>/dev/null || echo 0)
-  patched=$(grep -c '{\.\.\._,\.\.\.H}' <(strings "$BINARY") 2>/dev/null || echo 0)
 
   echo "=== Patch Status (패치 상태) ==="
   echo "Binary (바이너리): $BINARY"
   echo "Backup (백업):     $([ -f "$BACKUP" ] && echo "$BACKUP" || echo "(none)")"
-  echo "Original pattern (원본 패턴): ${orig} / Patched pattern (패치 패턴): ${patched}"
 
-  if [[ "$orig" -eq 0 && "$patched" -gt 0 ]]; then
-    echo "Status (상태): ✅ Patched (패치됨)"
-  elif [[ "$orig" -gt 0 && "$patched" -eq 0 ]]; then
-    echo "Status (상태): ⚠ Not patched — original (미패치, 원본)"
-  else
-    echo "Status (상태): ❓ Unknown (알 수 없음)"
-  fi
+  # Check companion merge function specifically
+  python3 -c "
+data = open('$BINARY', 'rb').read()
+orig_pat = b'{...H,..._}'
+patched_pat = b'{..._,...H}'
+orig = 0; patched = 0
+for pat, label in [(orig_pat, 'orig'), (patched_pat, 'patched')]:
+    idx = 0
+    while True:
+        pos = data.find(pat, idx)
+        if pos == -1: break
+        ctx = data[max(0,pos-200):pos]
+        if b'bones' in ctx and b'companion' in ctx:
+            if label == 'orig': orig += 1
+            else: patched += 1
+        idx = pos + 1
+print(f'Companion function: original={orig}, patched={patched}')
+if patched > 0 and orig == 0:
+    print('Status (\uc0c1\ud0dc): \u2705 Patched (\ud328\uce58\ub428)')
+elif orig > 0 and patched == 0:
+    print('Status (\uc0c1\ud0dc): \u26a0 Not patched \u2014 original (\ubbf8\ud328\uce58, \uc6d0\ubcf8)')
+else:
+    print('Status (\uc0c1\ud0dc): \u2753 Partial or unknown (\ubd80\ubd84 \ud328\uce58 \ub610\ub294 \uc54c \uc218 \uc5c6\uc74c)')
+"
 }
 
 patch_apply() {
@@ -233,9 +257,7 @@ patch_apply() {
     return 1
   fi
 
-  local count
-  count=$(grep -c '{\.\.\.H,\.\.\._}' <(strings "$BINARY") 2>/dev/null || echo 0)
-  if [[ "$count" -eq 0 ]]; then
+  if is_patched; then
     echo "✅ Already patched (이미 패치됨)"
     return 0
   fi
@@ -246,9 +268,11 @@ patch_apply() {
     echo "Backup created (백업 생성): $BACKUP"
   fi
 
-  # Patch (패치)
+  # Patch (패치) — target the companion merge function precisely
   python3 -c "
 data = bytearray(open('$BINARY', 'rb').read())
+# Match the exact companion function: return{...H,..._}} preceded by bones
+# This is the function: function wC(){let H=T_().companion;...let{bones:_}=...;return{...H,..._}}
 old = b'{...H,..._}'
 new = b'{..._,...H}'
 count = 0
@@ -256,14 +280,15 @@ idx = 0
 while True:
     pos = data.find(old, idx)
     if pos == -1: break
-    ctx = data[max(0,pos-80):pos+80]
-    if b'bones' in ctx or b'zC' in ctx or b'companion' in ctx:
+    # Look in a 200-byte window before the pattern for companion-specific markers
+    ctx_before = data[max(0,pos-200):pos]
+    if b'bones' in ctx_before and b'companion' in ctx_before:
         data[pos:pos+len(old)] = new
         count += 1
     idx = pos + 1
 with open('$BINARY', 'wb') as f:
     f.write(data)
-print(f'✅ {count} location(s) patched (곳 패치 완료)')
+print(f'\u2705 {count} location(s) patched (\uacf3 \ud328\uce58 \uc644\ub8cc)')
 "
 
   codesign --force --sign - "$BINARY" 2>/dev/null
